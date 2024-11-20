@@ -1,17 +1,32 @@
 import './style.css';
 import * as THREE from "three";
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
+import gsap from 'gsap';
+// import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 
 const scene = new THREE.Scene();
-// scene.background = new THREE.Color( 0xfc8047 );
+scene.background = new THREE.Color( 0x000000 );
 
 // Camera
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 camera.position.set(25, 25, 0);
 camera.up.set(0, 1, 0);
-camera.lookAt(0, 0, 0);
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// Animación suave de la cámara
+gsap.to(camera.position, {
+  duration: 10,
+  y: 15,
+  yoyo: true,
+  repeat: -1,
+  ease: "sine.inOut",
+});
 
 // Renderer
 const renderer = new THREE.WebGLRenderer();
@@ -22,15 +37,34 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
 // Controls
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true;
+// const controls = new OrbitControls(camera, renderer.domElement);
+// controls.enableDamping = true;
 
 // HDR
-const rgbeLoader = new RGBELoader();
-rgbeLoader.load('hdri/HDR_multi_nebulae.hdr', function (texture) {
-  texture.mapping = THREE.EquirectangularRefractionMapping;
-  scene.background = texture;
-});
+// const rgbeLoader = new RGBELoader();
+// rgbeLoader.load('hdri/HDR_multi_nebulae.hdr', function (texture) {
+//   texture.mapping = THREE.EquirectangularRefractionMapping;
+//   scene.background = texture;
+// });
+
+// Cubemap
+const cubeTextureLoader = new THREE.CubeTextureLoader();
+const environmentMap = cubeTextureLoader.load([
+  "hdri/px.png",
+  "hdri/nx.png",
+  "hdri/py.png",
+  "hdri/ny.png",
+  "hdri/pz.png",
+  "hdri/nz.png",
+],
+  (environmentMap) => {
+    scene.background = environmentMap;
+  },
+  undefined,
+  (error) => {
+    console.error("Error al cargar el cubemap:", error);
+  }
+);
 
 // Ambient Light
 const ambiLight = new THREE.AmbientLight(0x606060, 2.5); // soft white light
@@ -103,6 +137,15 @@ const planetOne = new THREE.Mesh(sphereGeometry, planetOneMaterial);
 planetOne.castShadow = true;
 planetOne.receiveShadow = true;
 planetOneOrbit.add(planetOne);
+
+// Oscilation of planet one
+gsap.to(planetOne.position, {
+  duration: 2,
+  y: 2,
+  yoyo: true,
+  repeat: -1,
+  ease: "bounce.inOut",
+});
 
 // Satellite One
 const satelitOrbit = new THREE.Object3D();
@@ -223,50 +266,90 @@ loadModel(
   booOrbit
 );
 
+// UFO
+let ufo = null;
+const modelLoader = new GLTFLoader();
 
-// Animation Loop
-let time = Date.now();
-function animate() {
-  const currentTime = Date.now();
-  const deltaTime = currentTime - time;
-  time = currentTime;
+modelLoader.load(
+  "models/ufo/scene.gltf",
+  function (gltf) {
+    ufo = gltf.scene;
+    ufo.position.set(-30, 20, 30);
+    ufo.scale.set(2, 2, 2);
+    scene.add(ufo);
 
-  objects.forEach((obj) => {
-    if (obj != null)
-      obj.rotation.y += 0.0001 * deltaTime;
-  });
+    gsap.to(ufo.position, {
+      duration: 10,
+      z: -30,
+      x: 30,
+      y: 10,
+      yoyo: true,
+      repeat: -1,
+      ease: "sine.inOut",
+    });
 
-  renderer.render(scene, camera);
-  requestAnimationFrame(animate);
-}
+    gsap.to(ufo.rotation, {
+      duration: 5,
+      y: Math.PI * 2,
+      yoyo: false,
+      repeat: -1,
+      ease: "none"
+    });
+  },
+  function (xhr) {
+    console.log((xhr.loaded / xhr.total) * 100 + "% loaded");
+  },
+  function (error) {
+    console.error(error);
+  }
+);  
 
-animate();
+
+  // Animation Loop
+  let time = Date.now();
+  function animate() {
+    const currentTime = Date.now();
+    const deltaTime = currentTime - time;
+    time = currentTime;
+
+    objects.forEach((obj) => {
+      if (obj != null)
+        obj.rotation.y += 0.0001 * deltaTime;
+    });
+
+    camera.lookAt(0, 0, 0);
+
+    renderer.render(scene, camera);
+    requestAnimationFrame(animate);
+  }
+
+  animate();
 
 
-function loadModel(path, object3d, position, scale, systemToAdd, castShadows = true) {
-  //Carregam el fitxer
-  const modelLoader = new GLTFLoader();
-  modelLoader.load(
-    path,
-    function (gltf) {
-      object3d = gltf.scene;
-      object3d.position.set(position.x, position.y, position.z);
-      object3d.scale.set(scale.x, scale.y, scale.z);
-      systemToAdd.add(object3d);
+  function loadModel(path, object3d, position, scale, systemToAdd, castShadows = true) {
+    //Carregam el fitxer
+    const modelLoader = new GLTFLoader();
+    modelLoader.load(
+      path,
+      function (gltf) {
+        object3d = gltf.scene;
+        object3d.position.set(position.x, position.y, position.z);
+        object3d.scale.set(scale.x, scale.y, scale.z);
+        systemToAdd.add(object3d);
 
-      // Traverse through all children of the loaded model
-      gltf.scene.traverse((child) => {
-        if (child.isMesh) {
-          child.castShadow = castShadows; // Enable shadow casting
-          child.receiveShadow = castShadows; // Enable shadow receiving
-        }
-      });
-    },
-    function (xhr) {
-      console.log((xhr.loaded / xhr.total) * 100 + "% loaded");
-    },
-    function (error) {
-      console.error(error);
-    }
-  );
-}
+        // Traverse through all children of the loaded model
+        gltf.scene.traverse((child) => {
+          if (child.isMesh) {
+            child.castShadow = castShadows; // Enable shadow casting
+            child.receiveShadow = castShadows; // Enable shadow receiving
+          }
+        });
+      },
+      function (xhr) {
+        console.log((xhr.loaded / xhr.total) * 100 + "% loaded");
+      },
+      function (error) {
+        console.error(error);
+      }
+    );
+  }
